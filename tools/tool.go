@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"io/ioutil"
 	"log"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // ToAddressString - return "$host:$port"
@@ -117,4 +119,34 @@ func LogAndExitIfErr(err error) {
 		log.Fatalf("error: %s\n", err.Error())
 		os.Exit(1)
 	}
+}
+
+var stdinToChannelOnce sync.Once
+var stdinChannel chan []byte
+
+// StdinToChannel - get one same stdin channel
+func StdinToChannel() <-chan []byte {
+	stdinToChannelOnce.Do(func () {
+		stdinChannel = make(chan []byte)
+		go func() {
+			var (
+				buffer = make([]byte, 4096, 4096)
+				err error = nil
+				n = int(0)
+			)
+			for {
+				n, err = os.Stdin.Read(buffer)
+				if err != nil{
+					if err.Error() == "EOF" {
+						LogAndExitIfErr(errors.New("stdin has eof, exit"))
+					}
+					LogAndExitIfErr(err)
+				}
+				copyBuffer := make([]byte, n, n)
+				copy(copyBuffer, buffer[:n])
+				stdinChannel <- copyBuffer
+			}
+		}()
+	})
+	return stdinChannel
 }

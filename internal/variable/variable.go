@@ -12,6 +12,8 @@ var (
 	ConfigBaseDir string
 	// SSHHostKeyFileName - simple ssh ras private key file name
 	SSHHostKeyFileName string = "ssh_host_rsa_key"
+	// StdoutReadyTrigger - if stdiotunnel echo this string, then server ready
+	StdoutReadyTrigger string = "::stdiotunnel-server-ready::"
 )
 
 func init() {

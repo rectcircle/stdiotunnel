@@ -5,13 +5,22 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Launch the file",
+			"name": "Launch Current File",
 			"type": "go",
 			"request": "launch",
 			"mode": "auto",
 			"program": "${fileDirname}",
 			"env": {},
 			"args": []
+		},
+		{
+			"name": "Launch stdiotunnel client",
+			"type": "go",
+			"request": "launch",
+			"mode": "auto",
+			"program": "${workspaceFolder}/cmd/stdiotunnel",
+			"env": {},
+			"args": ["client"],
 		}
 	]
 }
