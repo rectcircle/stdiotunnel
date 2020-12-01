@@ -12,13 +12,13 @@ import (
 var (
 	subcommandKeyServer = "server"
 	subcommandKeyClient = "client"
-	subcommandKeyHelp = "help"
+	subcommandKeyHelp   = "help"
 )
 
 func parseClientArgs(args []string) (host string, port uint16, interactive bool, command string) {
 	var (
 		portUint64 uint
-		help bool
+		help       bool
 	)
 	subcommand := subcommandKeyClient
 	flagset := flag.NewFlagSet(subcommand, flag.ExitOnError)
@@ -27,9 +27,9 @@ func parseClientArgs(args []string) (host string, port uint16, interactive bool,
 	// flagset.StringVar(&host ,"h", "127.0.0.1", "host - bind host")
 	flagset.UintVar(&portUint64, "p", 20096, "port - bind port")
 	flagset.BoolVar(&interactive, "i", true, "interactive - whether start command with interactive mode (with pty mode) to initialize")
-	flagset.StringVar(&command ,"c", tools.GetUnixUserShell(), "command - command to be launched")
+	flagset.StringVar(&command, "c", tools.GetUnixUserShell(), "command - command to be launched")
 	flagset.BoolVar(&help, "help", false, "output this subcommand help")
-	flagset.Usage = func ()  {
+	flagset.Usage = func() {
 		fmt.Fprintf(flagset.Output(), "Start a Stdio Tunnel Client\nUsage of `%s %s`:\n", os.Args[0], subcommand)
 		flagset.PrintDefaults()
 	}
@@ -56,7 +56,6 @@ func helpAndExit(isErr bool) {
 		os.Exit(2)
 	}
 }
-
 
 func main() {
 	if len(os.Args) < 2 {

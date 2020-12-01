@@ -29,7 +29,6 @@ func ListenAndServe(host string, port uint16) {
 	}
 }
 
-
 func serve(ctx context.Context, conn net.Conn) {
 	// copy to conn.Write from conn.Read
 	n, err := io.Copy(conn, conn)
@@ -38,7 +37,7 @@ func serve(ctx context.Context, conn net.Conn) {
 		reason = err.Error()
 	}
 	log.Printf(
-		"client %s connection close, write %d byte, reason: %s\n", 
+		"client %s connection close, write %d byte, reason: %s\n",
 		conn.RemoteAddr().String(),
 		n,
 		reason,

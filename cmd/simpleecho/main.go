@@ -11,19 +11,19 @@ import (
 var (
 	subcommandKeyServer = "server"
 	subcommandKeyClient = "client"
-	subcommandKeyHelp = "help"
+	subcommandKeyHelp   = "help"
 )
 
 func parseArgs(subcommand string, desc string, args []string) (host string, port uint16) {
 	var (
 		portUint64 uint
-		help bool
+		help       bool
 	)
 	flagset := flag.NewFlagSet(subcommand, flag.ExitOnError)
-	flagset.StringVar(&host ,"h", "127.0.0.1", "host")
+	flagset.StringVar(&host, "h", "127.0.0.1", "host")
 	flagset.UintVar(&portUint64, "p", 20007, "port")
 	flagset.BoolVar(&help, "help", false, "output this subcommand help")
-	flagset.Usage = func ()  {
+	flagset.Usage = func() {
 		fmt.Fprintf(flagset.Output(), "%s\nUsage of `%s %s`:\n", desc, os.Args[0], subcommand)
 		flagset.PrintDefaults()
 	}

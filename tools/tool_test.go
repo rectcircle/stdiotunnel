@@ -101,20 +101,20 @@ func TestReadOrCreateFile(t *testing.T) {
 	}{
 		{
 			name: "tmp file test1",
-			args: args {
+			args: args{
 				path: tmpPath,
-				f: func() []byte { return content },
+				f:    func() []byte { return content },
 			},
-			want: content,
+			want:    content,
 			wantErr: false,
 		},
 		{
 			name: "tmp file test2",
-			args: args {
+			args: args{
 				path: tmpPath,
-				f: func() []byte { return content },
+				f:    func() []byte { return content },
 			},
-			want: content,
+			want:    content,
 			wantErr: false,
 		},
 	}

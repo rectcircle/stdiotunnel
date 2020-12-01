@@ -65,8 +65,10 @@ func getDarwinUserShell() string {
 func GetUnixUserShell() string {
 	var shell string = ""
 	switch runtime.GOOS {
-	case "darwin": shell = getDarwinUserShell()
-	case "linux": shell = getLinuxUserShell()
+	case "darwin":
+		shell = getDarwinUserShell()
+	case "linux":
+		shell = getLinuxUserShell()
 	}
 	if shell == "" {
 		return "bash"
@@ -74,23 +76,21 @@ func GetUnixUserShell() string {
 	return shell
 }
 
-
 // PathExist - return whether exist of path
 func PathExist(path string) bool {
-    _, err := os.Stat(path)
-    if err == nil {
-        return true
-    }
-    if os.IsNotExist(err) {
-        return false
-    }
-    return false
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return false
 }
-
 
 // ReadOrCreateFile - read from config file, and return the file content
 // if path not exist, will create the path and call `f()` to write to the file.
-func ReadOrCreateFile(path string, f func () []byte) ([]byte, error) {
+func ReadOrCreateFile(path string, f func() []byte) ([]byte, error) {
 	if PathExist(path) {
 		content, err := ioutil.ReadFile(path)
 		if err != nil {
@@ -104,7 +104,7 @@ func ReadOrCreateFile(path string, f func () []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	file, err2 := os.OpenFile(path, os.O_WRONLY | os.O_CREATE | os.O_EXCL, 0644)
+	file, err2 := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err2 != nil {
 		return nil, err2
 	}
@@ -126,17 +126,17 @@ var stdinChannel chan []byte
 
 // StdinToChannel - get one same stdin channel
 func StdinToChannel() <-chan []byte {
-	stdinToChannelOnce.Do(func () {
+	stdinToChannelOnce.Do(func() {
 		stdinChannel = make(chan []byte)
 		go func() {
 			var (
-				buffer = make([]byte, 4096, 4096)
-				err error = nil
-				n = int(0)
+				buffer       = make([]byte, 4096, 4096)
+				err    error = nil
+				n            = int(0)
 			)
 			for {
 				n, err = os.Stdin.Read(buffer)
-				if err != nil{
+				if err != nil {
 					if err.Error() == "EOF" {
 						LogAndExitIfErr(errors.New("stdin has eof, exit"))
 					}

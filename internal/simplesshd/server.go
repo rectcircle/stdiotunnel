@@ -34,7 +34,7 @@ func ListenAndServe(host string, port uint16) {
 	tools.LogAndExitIfErr(err)
 	log.Printf("Start a ssh Server Success! on %s\n", addr)
 	// ssh server config: not auth
-	config := &ssh.ServerConfig {
+	config := &ssh.ServerConfig{
 		// No Auth
 		NoClientAuth: true,
 	}
@@ -61,15 +61,14 @@ func ListenAndServe(host string, port uint16) {
 	}
 }
 
-
 func readOrCreatePrivateKey() []byte {
 	content, err := tools.ReadOrCreateFile(
 		path.Join(variable.ConfigBaseDir, variable.SSHHostKeyFileName),
-		func () []byte {
+		func() []byte {
 			privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 			tools.LogAndExitIfErr(err)
 			return pem.EncodeToMemory(&pem.Block{
-				Type: "RSA PRIVATE KEY",
+				Type:  "RSA PRIVATE KEY",
 				Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 			})
 		},
@@ -96,13 +95,12 @@ func handleChannel(newChannel ssh.NewChannel, remoteAttr net.Addr) {
 		// At this point, we have the opportunity to reject the client's
 		// request for another logical connection
 		go handleSSHSession(newChannel, remoteAttr)
-	default: 
+	default:
 		// "x11" and "forwarded-tcpip" not support
 		newChannel.Reject(ssh.UnknownChannelType, fmt.Sprintf("unknown channel type: %s", t))
 		log.Printf("Client %s connection error: not support channel type %s", remoteAttr.String(), t)
 	}
 }
-
 
 // direct-tcpip data struct as specified in RFC4254, Section 7.2
 type localForwardChannelData struct {
@@ -121,7 +119,7 @@ func handleDirectTCPIP(newChannel ssh.NewChannel, remoteAttr net.Addr) {
 		newChannel.Reject(ssh.ConnectionFailed, "error parsing forward data: "+err.Error())
 		return
 	}
-	sourceAddress :=  tools.ToAddressString(d.OriginAddr, uint16(d.OriginPort))
+	sourceAddress := tools.ToAddressString(d.OriginAddr, uint16(d.OriginPort))
 	destAddress := tools.ToAddressString(d.DestAddr, uint16(d.DestPort))
 
 	var dialer net.Dialer
@@ -156,8 +154,8 @@ func handleDirectTCPIP(newChannel ssh.NewChannel, remoteAttr net.Addr) {
 func handleSSHSession(newChannel ssh.NewChannel, remoteAttr net.Addr) {
 
 	var (
-		enablePty = false
-		ptyFile *os.File = nil
+		enablePty          = false
+		ptyFile   *os.File = nil
 	)
 
 	connection, requests, err := newChannel.Accept()

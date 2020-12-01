@@ -28,7 +28,7 @@ func Client(host string, port uint16, interactive bool, command string) {
 	cmd := exec.Command(commandAndArgs[0], commandAndArgs[1:]...)
 	var (
 		writer io.WriteCloser = nil
-		reader io.ReadCloser = nil
+		reader io.ReadCloser  = nil
 	)
 
 	if interactive {
@@ -75,10 +75,10 @@ func startCommandWithPtyAndInit(cmd *exec.Cmd) (ptyFile *os.File) {
 	// Set stdin in raw mode.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-			panic(err)
+		panic(err)
 	}
 
-	closeAndRestore := func () {
+	closeAndRestore := func() {
 		signal.Stop(termWinChangeChannel)
 		close(termWinChangeChannel)
 		term.Restore(int(os.Stdin.Fd()), oldState)
@@ -93,15 +93,15 @@ func startCommandWithPtyAndInit(cmd *exec.Cmd) (ptyFile *os.File) {
 	go func(initDone <-chan bool) {
 		for {
 			select {
-			case buffer := <- tools.StdinToChannel():
+			case buffer := <-tools.StdinToChannel():
 				select {
-				case <- initDone:
+				case <-initDone:
 					return
 				default:
 					_, err := ptyFile.Write(buffer)
 					tools.LogAndExitIfErr(err)
 				}
-			case <- initDone:
+			case <-initDone:
 				return
 			}
 		}
@@ -110,11 +110,11 @@ func startCommandWithPtyAndInit(cmd *exec.Cmd) (ptyFile *os.File) {
 	// Handle stdout
 	// check trigger and notice stdin handle return
 	var (
-		buffer = make([]byte, 4096, 4096)
-		err2 error = nil
-		n = int(0)
-		targetTrigger = []byte(variable.StdoutReadyTrigger)
-		needCheckTrigger = make([]byte, 0, 4096)
+		buffer                 = make([]byte, 4096, 4096)
+		err2             error = nil
+		n                      = int(0)
+		targetTrigger          = []byte(variable.StdoutReadyTrigger)
+		needCheckTrigger       = make([]byte, 0, 4096)
 	)
 	for {
 		n, err2 = ptyFile.Read(buffer)
@@ -128,7 +128,7 @@ func startCommandWithPtyAndInit(cmd *exec.Cmd) (ptyFile *os.File) {
 		for _, b := range buffer[:n] {
 			if len(needCheckTrigger) > 0 {
 				l := len(targetTrigger) - 1
-				if l > len(needCheckTrigger) - 1 {
+				if l > len(needCheckTrigger)-1 {
 					l = len(needCheckTrigger)
 				}
 				needCheckTrigger = needCheckTrigger[1:l:cap(needCheckTrigger)]

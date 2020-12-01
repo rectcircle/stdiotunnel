@@ -25,7 +25,7 @@ func Client(host string, port uint16) {
 		// write to connection
 		conn.Write([]byte(line))
 		// read from connection
-		for ; lineLen > 0; {
+		for lineLen > 0 {
 			n, err2 := conn.Read(buffer)
 			if err2 != nil {
 				if err2.Error() == "EOF" {
@@ -41,4 +41,3 @@ func Client(host string, port uint16) {
 		os.Stdout.WriteString("\n")
 	}
 }
-

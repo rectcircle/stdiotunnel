@@ -17,10 +17,10 @@ func Test_parseArgs(t *testing.T) {
 		// Case1
 		{
 			name: "test server help",
-			args: args {
+			args: args{
 				subcommand: "server",
-				desc: "run a echo server",
-				args: []string{ "server" },
+				desc:       "run a echo server",
+				args:       []string{"server"},
 			},
 			wantHost: "127.0.0.1",
 			wantPort: 7,
@@ -28,10 +28,10 @@ func Test_parseArgs(t *testing.T) {
 		// Case2
 		{
 			name: "test server help",
-			args: args {
+			args: args{
 				subcommand: "server",
-				desc: "run a echo server",
-				args: []string{ "server", "-h", "0.0.0.0", "-p", "10007" },
+				desc:       "run a echo server",
+				args:       []string{"server", "-h", "0.0.0.0", "-p", "10007"},
 			},
 			wantHost: "0.0.0.0",
 			wantPort: 10007,
