@@ -42,57 +42,56 @@ type Segment struct {
 
 // NewRequestSegment - new a Segment with method = MethodReqConn
 func NewRequestSegment() Segment {
-	return Segment {
+	return Segment{
 		Version: ProtocolVersion1,
-		Method: MethodReqConn,
+		Method:  MethodReqConn,
 	}
 }
 
 // NewAckSegment - new a Segment with method = MethodAckConn
 func NewAckSegment(ConnectionID uint16) Segment {
-	return Segment {
-		Version: ProtocolVersion1,
-		Method: MethodAckConn,
+	return Segment{
+		Version:      ProtocolVersion1,
+		Method:       MethodAckConn,
 		ConnectionID: ConnectionID,
 	}
 }
 
 // NewSendDataSegment - new a Segment with method = MethodSendData
 func NewSendDataSegment(ConnectionID uint16, payload []byte) Segment {
-	return Segment {
-		Version: ProtocolVersion1,
-		Method: MethodSendData,
-		ConnectionID: ConnectionID,
+	return Segment{
+		Version:       ProtocolVersion1,
+		Method:        MethodSendData,
+		ConnectionID:  ConnectionID,
 		PayloadLength: uint32(len(payload)),
-		Payload: payload,
+		Payload:       payload,
 	}
 }
 
-
 // NewCloseSegment - new a Segment with method = MethodCloseConn
 func NewCloseSegment(ConnectionID uint16) Segment {
-	return Segment {
-		Version: ProtocolVersion1,
-		Method: MethodCloseConn,
+	return Segment{
+		Version:      ProtocolVersion1,
+		Method:       MethodCloseConn,
 		ConnectionID: ConnectionID,
 	}
 }
 
 // NewHeartbeatSegment - new a Segment with method = MethodHeartbeat
 func NewHeartbeatSegment() Segment {
-	return Segment {
+	return Segment{
 		Version: ProtocolVersion1,
-		Method: MethodHeartbeat,
+		Method:  MethodHeartbeat,
 	}
 }
 
 // Equal - Equal
 func (s *Segment) Equal(other *Segment) bool {
 	return s.Version == other.Version &&
-			s.Method == other.Method &&
-			s.ConnectionID == other.ConnectionID &&
-			s.PayloadLength == other.PayloadLength &&
-			bytes.Equal(s.Payload, other.Payload)
+		s.Method == other.Method &&
+		s.ConnectionID == other.ConnectionID &&
+		s.PayloadLength == other.PayloadLength &&
+		bytes.Equal(s.Payload, other.Payload)
 }
 
 // Copy - deep copy the object
@@ -103,10 +102,9 @@ func (s Segment) Copy() Segment {
 	return s
 }
 
-
 // Serialize - Serialize Segment to []byte
 func (s Segment) Serialize() []byte {
-	data := make([]byte, 8 + s.PayloadLength)
+	data := make([]byte, 8+s.PayloadLength)
 	data[0] = s.Version
 	data[1] = s.Method
 	binary.BigEndian.PutUint16(data[2:4], s.ConnectionID)
@@ -135,13 +133,13 @@ func DeserializeFromReader(reader io.Reader) (<-chan Segment, <-chan error) {
 				segmentChannel <- segment
 			}
 		}
-	} ()
+	}()
 	return segmentChannel, closed
 }
 
 type segmentState struct {
-	step int32
-	cache []byte
+	step          int32
+	cache         []byte
 	dataRemaining uint32
 }
 
@@ -186,7 +184,7 @@ func handleBytes(cache *Segment, state *segmentState, buffer []byte) []Segment {
 				state.cache = append(state.cache, b)
 				if len(state.cache) == 4 {
 					cache.PayloadLength = binary.BigEndian.Uint32(state.cache)
-					cache.Payload = []byte {}
+					cache.Payload = []byte{}
 					state.cache = nil
 					state.dataRemaining = cache.PayloadLength
 					state.step++
@@ -199,11 +197,12 @@ func handleBytes(cache *Segment, state *segmentState, buffer []byte) []Segment {
 				lastLen = n
 			}
 			cache.Payload = append(cache.Payload, buffer[i:lastLen]...)
+			state.dataRemaining -= lastLen - i
 			i = lastLen
 		}
 		if segmentStateStepPayload == state.step && 0 == state.dataRemaining {
 			result = append(result, *cache)
-			*cache = Segment {}
+			*cache = Segment{}
 			*state = segmentState{}
 		}
 	}
