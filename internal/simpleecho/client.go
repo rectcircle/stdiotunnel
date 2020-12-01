@@ -26,9 +26,9 @@ func Client(host string, port uint16) {
 		conn.Write([]byte(line))
 		// read from connection
 		for lineLen > 0 {
-			n, err2 := conn.Read(buffer)
-			if err2 != nil {
-				if err2.Error() == "EOF" {
+			n, err := conn.Read(buffer)
+			if err != nil {
+				if err.Error() == "EOF" {
 					log.Println("Server close")
 					os.Exit(0)
 				}

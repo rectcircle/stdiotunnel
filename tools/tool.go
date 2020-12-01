@@ -40,8 +40,8 @@ func getLinuxUserShell() string {
 	if err != nil {
 		return ""
 	}
-	u, err2 := user.Current()
-	if err2 != nil {
+	u, err := user.Current()
+	if err != nil {
 		return ""
 	}
 	passwd := string(bytes)
@@ -49,8 +49,8 @@ func getLinuxUserShell() string {
 }
 
 func getDarwinUserShell() string {
-	u, err2 := user.Current()
-	if err2 != nil {
+	u, err := user.Current()
+	if err != nil {
 		return ""
 	}
 	output, err := exec.Command("/usr/bin/dscl", ".", "-read", u.HomeDir, "UserShell").Output()
@@ -104,9 +104,9 @@ func ReadOrCreateFile(path string, f func() []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	file, err2 := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
-	if err2 != nil {
-		return nil, err2
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return nil, err
 	}
 	file.Write(content)
 	file.Close()
@@ -129,13 +129,9 @@ func StdinToChannel() <-chan []byte {
 	stdinToChannelOnce.Do(func() {
 		stdinChannel = make(chan []byte)
 		go func() {
-			var (
-				buffer       = make([]byte, 4096, 4096)
-				err    error = nil
-				n            = int(0)
-			)
+			buffer := make([]byte, 4096, 4096)
 			for {
-				n, err = os.Stdin.Read(buffer)
+				n, err := os.Stdin.Read(buffer)
 				if err != nil {
 					if err.Error() == "EOF" {
 						LogAndExitIfErr(errors.New("stdin has eof, exit"))

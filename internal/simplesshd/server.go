@@ -39,18 +39,18 @@ func ListenAndServe(host string, port uint16) {
 		NoClientAuth: true,
 	}
 	// Config ssh host private key
-	signer, err4 := ssh.ParsePrivateKey(readOrCreatePrivateKey())
-	tools.LogAndExitIfErr(err4)
+	signer, err := ssh.ParsePrivateKey(readOrCreatePrivateKey())
+	tools.LogAndExitIfErr(err)
 	config.AddHostKey(signer)
 
 	for {
 		// Wait accept connection
-		conn, err2 := listener.Accept()
-		tools.LogAndExitIfErr(err2)
+		conn, err := listener.Accept()
+		tools.LogAndExitIfErr(err)
 		// Before use, a handshake must be performed on the incoming net.Conn.
-		sshConn, channel, request, err3 := ssh.NewServerConn(conn, config)
-		if err3 != nil {
-			log.Printf("Client %s failed to handshake: %s\n", conn.RemoteAddr().String(), err3)
+		sshConn, channel, request, err := ssh.NewServerConn(conn, config)
+		if err != nil {
+			log.Printf("Client %s failed to handshake: %s\n", conn.RemoteAddr().String(), err)
 			continue
 		}
 		log.Printf("New SSH connection from %s (%s)\n", sshConn.RemoteAddr().String(), sshConn.ClientVersion())
@@ -123,14 +123,14 @@ func handleDirectTCPIP(newChannel ssh.NewChannel, remoteAttr net.Addr) {
 	destAddress := tools.ToAddressString(d.DestAddr, uint16(d.DestPort))
 
 	var dialer net.Dialer
-	destConnection, err2 := dialer.Dial("tcp", destAddress)
-	if err2 != nil {
-		newChannel.Reject(ssh.ConnectionFailed, err2.Error())
+	destConnection, err := dialer.Dial("tcp", destAddress)
+	if err != nil {
+		newChannel.Reject(ssh.ConnectionFailed, err.Error())
 		return
 	}
 
-	connection, requests, err3 := newChannel.Accept()
-	if err3 != nil {
+	connection, requests, err := newChannel.Accept()
+	if err != nil {
 		destConnection.Close()
 		return
 	}
@@ -208,8 +208,8 @@ func newShellCommand(connection ssh.Channel) (shell *exec.Cmd, close func()) {
 	shell = exec.Command(tools.GetUnixUserShell())
 	// bash := exec.Command("bash")
 	//  Config shell pwd to User Home dir
-	u, err2 := user.Current()
-	if err2 == nil {
+	u, err := user.Current()
+	if err == nil {
 		shell.Dir = u.HomeDir
 	}
 	// Prepare teardown function
@@ -254,15 +254,15 @@ func startNoPtyShell(connection ssh.Channel) error {
 	shell, close := newShellCommand(connection)
 
 	// Create pipe
-	writer, err1 := shell.StdinPipe()
-	if err1 != nil {
+	writer, err := shell.StdinPipe()
+	if err != nil {
 		connection.Close()
-		return err1
+		return err
 	}
-	reader, err2 := shell.StdoutPipe()
-	if err2 != nil {
+	reader, err := shell.StdoutPipe()
+	if err != nil {
 		connection.Close()
-		return err2
+		return err
 	}
 
 	// Allocate a no pty shell for this Sessions

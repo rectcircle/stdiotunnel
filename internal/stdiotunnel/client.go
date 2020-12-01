@@ -110,20 +110,18 @@ func startCommandWithPtyAndInit(cmd *exec.Cmd) (ptyFile *os.File) {
 	// Handle stdout
 	// check trigger and notice stdin handle return
 	var (
-		buffer                 = make([]byte, 4096, 4096)
-		err2             error = nil
-		n                      = int(0)
-		targetTrigger          = []byte(variable.StdoutReadyTrigger)
-		needCheckTrigger       = make([]byte, 0, 4096)
+		buffer           = make([]byte, 4096, 4096)
+		targetTrigger    = []byte(variable.StdoutReadyTrigger)
+		needCheckTrigger = make([]byte, 0, 4096)
 	)
 	for {
-		n, err2 = ptyFile.Read(buffer)
-		if err2 != nil {
+		n, err := ptyFile.Read(buffer)
+		if err != nil {
 			closeAndRestore()
-			if err2.Error() == "EOF" {
+			if err.Error() == "EOF" {
 				tools.LogAndExitIfErr(errors.New("EOF: command not allow exit on init stage"))
 			}
-			tools.LogAndExitIfErr(err2)
+			tools.LogAndExitIfErr(err)
 		}
 		for _, b := range buffer[:n] {
 			if len(needCheckTrigger) > 0 {

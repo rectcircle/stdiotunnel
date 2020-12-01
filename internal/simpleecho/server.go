@@ -21,8 +21,8 @@ func ListenAndServe(host string, port uint16) {
 	ctx := context.Background()
 	for {
 		// Wait accept connection
-		conn, err2 := listener.Accept()
-		tools.LogAndExitIfErr(err2)
+		conn, err := listener.Accept()
+		tools.LogAndExitIfErr(err)
 		log.Printf("Client %s connection success\n", conn.RemoteAddr().String())
 		// Serve a client connection
 		go serve(ctx, conn)
