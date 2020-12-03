@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,8 +18,8 @@ import (
 	"golang.org/x/term"
 )
 
-// Client - run client
-func Client(host string, port uint16, interactive bool, command string) {
+// StartClient - run client
+func StartClient(host string, port uint16, interactive bool, command string) {
 	// Split command
 	commandAndArgs := strings.Fields(command)
 	if len(commandAndArgs) == 0 {
@@ -33,7 +34,9 @@ func Client(host string, port uint16, interactive bool, command string) {
 
 	if interactive {
 		// Enable interactive
-		startCommandWithPtyAndInit(cmd)
+		f := startCommandWithPtyAndInit(cmd)
+		writer = f
+		reader = f
 	} else {
 		// Disable interactive
 		var err error = nil
@@ -51,6 +54,19 @@ func Client(host string, port uint16, interactive bool, command string) {
 		}
 	}
 	log.Println(reader, writer)
+	// Start Tunnel Server
+	addr := tools.ToAddressString(host, port)
+	// Listen to tcp addr
+	listener, err := net.Listen("tcp", addr)
+	tools.LogAndExitIfErr(err)
+	for {
+		// Wait accept connection
+		conn, err := listener.Accept()
+		tools.LogAndExitIfErr(err)
+		log.Printf("Client %s connection success\n", conn.RemoteAddr().String())
+		// Serve a client connection
+		// go serve(ctx, conn)
+	}
 }
 
 func startCommandWithPtyAndInit(cmd *exec.Cmd) (ptyFile *os.File) {

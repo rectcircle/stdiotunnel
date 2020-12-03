@@ -63,7 +63,7 @@ func main() {
 	}
 	switch os.Args[1] {
 	case subcommandKeyClient:
-		stdiotunnel.Client(parseClientArgs(os.Args[1:]))
+		stdiotunnel.StartClient(parseClientArgs(os.Args[1:]))
 	case subcommandKeyServer:
 	case subcommandKeyHelp:
 		helpAndExit(false)

@@ -23,7 +23,7 @@ func Test_parseArgs(t *testing.T) {
 				args:       []string{"server"},
 			},
 			wantHost: "127.0.0.1",
-			wantPort: 7,
+			wantPort: 20007,
 		},
 		// Case2
 		{

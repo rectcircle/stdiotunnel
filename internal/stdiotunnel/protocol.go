@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
+	"net"
 )
 
 const (
@@ -12,13 +14,13 @@ const (
 )
 
 const (
-	// MethodReqConn - request connection
+	// MethodReqConn - request virtual connection
 	MethodReqConn = byte(iota + 1)
-	// MethodAckConn - Ack connection
+	// MethodAckConn - Ack virtual connection
 	MethodAckConn
 	// MethodSendData - Send data
 	MethodSendData
-	// MethodCloseConn - Close connection
+	// MethodCloseConn - Close virtual connection
 	MethodCloseConn
 	// MethodHeartbeat - Heartbeat
 	MethodHeartbeat
@@ -32,8 +34,8 @@ type Segment struct {
 	Version byte
 	// method
 	Method byte
-	// connection ID
-	ConnectionID uint16
+	// Virtual Connection ID
+	VID uint16
 	// payload length
 	PayloadLength uint32
 	// payload
@@ -49,31 +51,35 @@ func NewRequestSegment() Segment {
 }
 
 // NewAckSegment - new a Segment with method = MethodAckConn
-func NewAckSegment(ConnectionID uint16) Segment {
+func NewAckSegment(VID uint16, ServerVID uint16) Segment {
+	payload := make([]byte, 2)
+	binary.BigEndian.PutUint16(payload, ServerVID)
 	return Segment{
-		Version:      ProtocolVersion1,
-		Method:       MethodAckConn,
-		ConnectionID: ConnectionID,
+		Version:       ProtocolVersion1,
+		Method:        MethodAckConn,
+		VID:           VID,
+		PayloadLength: 2,
+		Payload:       payload,
 	}
 }
 
 // NewSendDataSegment - new a Segment with method = MethodSendData
-func NewSendDataSegment(ConnectionID uint16, payload []byte) Segment {
+func NewSendDataSegment(VID uint16, payload []byte) Segment {
 	return Segment{
 		Version:       ProtocolVersion1,
 		Method:        MethodSendData,
-		ConnectionID:  ConnectionID,
+		VID:           VID,
 		PayloadLength: uint32(len(payload)),
 		Payload:       payload,
 	}
 }
 
 // NewCloseSegment - new a Segment with method = MethodCloseConn
-func NewCloseSegment(ConnectionID uint16) Segment {
+func NewCloseSegment(VID uint16) Segment {
 	return Segment{
-		Version:      ProtocolVersion1,
-		Method:       MethodCloseConn,
-		ConnectionID: ConnectionID,
+		Version: ProtocolVersion1,
+		Method:  MethodCloseConn,
+		VID:     VID,
 	}
 }
 
@@ -89,7 +95,7 @@ func NewHeartbeatSegment() Segment {
 func (s *Segment) Equal(other *Segment) bool {
 	return s.Version == other.Version &&
 		s.Method == other.Method &&
-		s.ConnectionID == other.ConnectionID &&
+		s.VID == other.VID &&
 		s.PayloadLength == other.PayloadLength &&
 		bytes.Equal(s.Payload, other.Payload)
 }
@@ -107,14 +113,35 @@ func (s Segment) Serialize() []byte {
 	data := make([]byte, 8+s.PayloadLength)
 	data[0] = s.Version
 	data[1] = s.Method
-	binary.BigEndian.PutUint16(data[2:4], s.ConnectionID)
+	binary.BigEndian.PutUint16(data[2:4], s.VID)
 	binary.BigEndian.PutUint32(data[4:8], s.PayloadLength)
 	copy(data[8:], s.Payload)
 	return data
 }
 
+// SerializeToWriter - start a goroutine to receive Segment from channel and write to `writer`
+// if write() error, `closed` will receive a error and close the `closed` channel
+func SerializeToWriter(writer io.Writer) (chan<- Segment, <-chan error) {
+	segmentChannel := make(chan Segment)
+	closed := make(chan error)
+
+	go func() {
+		for {
+			s := <-segmentChannel
+			_, err := writer.Write(s.Serialize())
+			if err != nil {
+				closed <- err
+				close(closed)
+				break
+			}
+		}
+	}()
+
+	return segmentChannel, closed
+}
+
 // DeserializeFromReader - start a goroutine to read and Deserialize `reader` and send to `segment`
-// if reader error, `closed` will receive a error and close the `closed` channel
+// if read() error, `closed` will receive a error and close the `closed` channel
 func DeserializeFromReader(reader io.Reader) (<-chan Segment, <-chan error) {
 	segmentChannel := make(chan Segment)
 	closed := make(chan error)
@@ -146,7 +173,7 @@ type segmentState struct {
 const (
 	segmentStateStepVersion = int32(iota)
 	segmentStateStepMethod
-	segmentStateStepConnectionID
+	segmentStateStepVID
 	segmentStateStepPayloadLength
 	segmentStateStepPayload
 )
@@ -165,13 +192,13 @@ func handleBytes(cache *Segment, state *segmentState, buffer []byte) []Segment {
 			cache.Method = b
 			state.step++
 			i++
-		case segmentStateStepConnectionID:
+		case segmentStateStepVID:
 			if state.cache == nil {
 				state.cache = make([]byte, 2)
 				state.cache[0] = b
 			} else {
 				state.cache[1] = b
-				cache.ConnectionID = binary.BigEndian.Uint16(state.cache)
+				cache.VID = binary.BigEndian.Uint16(state.cache)
 				state.cache = nil
 				state.step++
 			}
@@ -207,4 +234,53 @@ func handleBytes(cache *Segment, state *segmentState, buffer []byte) []Segment {
 		}
 	}
 	return result
+}
+
+// Bridge - Bridge, manage all tunnels
+type Bridge struct {
+	ReadChannel <-chan Segment
+	ReadClosed  <-chan error
+	WriteChanel chan<- Segment
+	WriteClosed <-chan error
+	Tunnels     []Tunnel
+}
+
+// NewBridge - Create a Bridge to serve
+func NewBridge(reader io.ReadCloser, writer io.WriteCloser) Bridge {
+	readChannel, readClosed := DeserializeFromReader(reader)
+	writeChanel, writeClosed := SerializeToWriter(writer)
+	return Bridge{
+		ReadChannel: readChannel,
+		ReadClosed:  readClosed,
+		WriteChanel: writeChanel,
+		WriteClosed: writeClosed,
+		Tunnels:     make([]Tunnel, 0, math.MaxUint16),
+	}
+}
+
+// ClientNewTunnel - new a Tunnel from client
+func (*Bridge) ClientNewTunnel(conn net.Conn) {
+
+}
+
+// ClientServe - Client receive from readChannel and do something
+func (*Bridge) ClientServe() {
+}
+
+// ServerServe - Server receive from readChannel and do something
+func (*Bridge) ServerServe() {
+
+}
+
+// Tunnel - handle virtual connection
+type Tunnel struct {
+	readChannel <-chan Segment
+	writeChanel chan<- Segment
+	conn        net.Conn
+	VID         uint16
+}
+
+// Forward - Client/Server Read from conn and send to writeChanel
+func (*Tunnel) Forward() {
+
 }

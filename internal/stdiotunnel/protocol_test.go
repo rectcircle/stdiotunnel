@@ -40,7 +40,7 @@ func Test_handleBytes(t *testing.T) {
 			case 0:
 				wants = append(wants, NewRequestSegment())
 			case 1:
-				wants = append(wants, NewAckSegment(uint16(rand.Intn(10000))))
+				wants = append(wants, NewAckSegment(uint16(rand.Intn(10000)), uint16(rand.Intn(10000))))
 			case 2:
 				wants = append(wants, NewSendDataSegment(uint16(rand.Intn(10000)), randomBytes(100)))
 			case 3:
