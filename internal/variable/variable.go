@@ -2,6 +2,7 @@ package variable
 
 import (
 	"log"
+	"math"
 	"os"
 	"os/user"
 	"path"
@@ -14,6 +15,8 @@ var (
 	SSHHostKeyFileName string = "ssh_host_rsa_key"
 	// StdoutReadyTrigger - if stdiotunnel echo this string, then server ready
 	StdoutReadyTrigger string = "::stdiotunnel-server-ready::"
+	// MaxVirtualConnection - max virtual connection count
+	MaxVirtualConnection = uint16(math.MaxUint16 - 1)
 )
 
 func init() {

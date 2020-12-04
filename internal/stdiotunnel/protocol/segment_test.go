@@ -1,4 +1,4 @@
-package stdiotunnel
+package protocol
 
 import (
 	"math/rand"
@@ -18,7 +18,7 @@ func randomBytes(maxLen int) []byte {
 
 func Test_handleBytes(t *testing.T) {
 	t.Run("handleBytes Smoke test", func(t *testing.T) {
-		want := NewRequestSegment()
+		want := NewRequestSegment(uint16(rand.Intn(10000)))
 		got := handleBytes(&Segment{}, &segmentState{}, want.Serialize())
 		if len(got) != 1 {
 			t.Errorf("len(handleBytes()) != 1")
@@ -38,13 +38,13 @@ func Test_handleBytes(t *testing.T) {
 			t := rand.Intn(5)
 			switch t {
 			case 0:
-				wants = append(wants, NewRequestSegment())
+				wants = append(wants, NewRequestSegment(uint16(rand.Intn(10000))))
 			case 1:
-				wants = append(wants, NewAckSegment(uint16(rand.Intn(10000)), uint16(rand.Intn(10000))))
+				wants = append(wants, NewAckSegment(uint16(rand.Intn(10000))))
 			case 2:
 				wants = append(wants, NewSendDataSegment(uint16(rand.Intn(10000)), randomBytes(100)))
 			case 3:
-				wants = append(wants, NewCloseSegment(uint16(rand.Intn(10000))))
+				wants = append(wants, NewCloseSegment(uint16(rand.Intn(10000)), nil))
 			case 4:
 				wants = append(wants, NewHeartbeatSegment())
 			}

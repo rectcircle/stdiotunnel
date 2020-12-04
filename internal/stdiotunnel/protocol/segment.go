@@ -1,11 +1,9 @@
-package stdiotunnel
+package protocol
 
 import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"math"
-	"net"
 )
 
 const (
@@ -43,23 +41,20 @@ type Segment struct {
 }
 
 // NewRequestSegment - new a Segment with method = MethodReqConn
-func NewRequestSegment() Segment {
+func NewRequestSegment(VID uint16) Segment {
 	return Segment{
 		Version: ProtocolVersion1,
 		Method:  MethodReqConn,
+		VID:     VID,
 	}
 }
 
 // NewAckSegment - new a Segment with method = MethodAckConn
-func NewAckSegment(VID uint16, ServerVID uint16) Segment {
-	payload := make([]byte, 2)
-	binary.BigEndian.PutUint16(payload, ServerVID)
+func NewAckSegment(VID uint16) Segment {
 	return Segment{
-		Version:       ProtocolVersion1,
-		Method:        MethodAckConn,
-		VID:           VID,
-		PayloadLength: 2,
-		Payload:       payload,
+		Version: ProtocolVersion1,
+		Method:  MethodAckConn,
+		VID:     VID,
 	}
 }
 
@@ -75,12 +70,18 @@ func NewSendDataSegment(VID uint16, payload []byte) Segment {
 }
 
 // NewCloseSegment - new a Segment with method = MethodCloseConn
-func NewCloseSegment(VID uint16) Segment {
-	return Segment{
+func NewCloseSegment(VID uint16, err error) (segment Segment) {
+	segment = Segment{
 		Version: ProtocolVersion1,
 		Method:  MethodCloseConn,
 		VID:     VID,
 	}
+	if err != nil {
+		payload := []byte(err.Error())
+		segment.PayloadLength = uint32(len(payload))
+		segment.Payload = payload
+	}
+	return
 }
 
 // NewHeartbeatSegment - new a Segment with method = MethodHeartbeat
@@ -132,6 +133,7 @@ func SerializeToWriter(writer io.Writer) (chan<- Segment, <-chan error) {
 			if err != nil {
 				closed <- err
 				close(closed)
+				close(segmentChannel)
 				break
 			}
 		}
@@ -154,6 +156,7 @@ func DeserializeFromReader(reader io.Reader) (<-chan Segment, <-chan error) {
 			if err != nil {
 				closed <- err
 				close(closed)
+				close(segmentChannel)
 				return
 			}
 			for _, segment := range handleBytes(&cache, &state, buffer[:n]) {
@@ -234,53 +237,4 @@ func handleBytes(cache *Segment, state *segmentState, buffer []byte) []Segment {
 		}
 	}
 	return result
-}
-
-// Bridge - Bridge, manage all tunnels
-type Bridge struct {
-	ReadChannel <-chan Segment
-	ReadClosed  <-chan error
-	WriteChanel chan<- Segment
-	WriteClosed <-chan error
-	Tunnels     []Tunnel
-}
-
-// NewBridge - Create a Bridge to serve
-func NewBridge(reader io.ReadCloser, writer io.WriteCloser) Bridge {
-	readChannel, readClosed := DeserializeFromReader(reader)
-	writeChanel, writeClosed := SerializeToWriter(writer)
-	return Bridge{
-		ReadChannel: readChannel,
-		ReadClosed:  readClosed,
-		WriteChanel: writeChanel,
-		WriteClosed: writeClosed,
-		Tunnels:     make([]Tunnel, 0, math.MaxUint16),
-	}
-}
-
-// ClientNewTunnel - new a Tunnel from client
-func (*Bridge) ClientNewTunnel(conn net.Conn) {
-
-}
-
-// ClientServe - Client receive from readChannel and do something
-func (*Bridge) ClientServe() {
-}
-
-// ServerServe - Server receive from readChannel and do something
-func (*Bridge) ServerServe() {
-
-}
-
-// Tunnel - handle virtual connection
-type Tunnel struct {
-	readChannel <-chan Segment
-	writeChanel chan<- Segment
-	conn        net.Conn
-	VID         uint16
-}
-
-// Forward - Client/Server Read from conn and send to writeChanel
-func (*Tunnel) Forward() {
-
 }
