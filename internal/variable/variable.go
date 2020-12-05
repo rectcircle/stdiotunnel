@@ -17,6 +17,8 @@ var (
 	StdoutReadyTrigger string = "::stdiotunnel-server-ready::"
 	// MaxVirtualConnection - max virtual connection count
 	MaxVirtualConnection = uint16(math.MaxUint16 - 1)
+	// EnableTraceLog - whether enable trace log
+	EnableTraceLog = false
 )
 
 func init() {

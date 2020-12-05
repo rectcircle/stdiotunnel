@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/rectcircle/stdiotunnel/internal/variable"
 )
 
 // ToAddressString - return "$host:$port"
@@ -145,4 +147,26 @@ func StdinToChannel() <-chan []byte {
 		}()
 	})
 	return stdinChannel
+}
+
+// TraceF - print trace log to stdout
+func TraceF(format string, v ...interface{}) {
+	if variable.EnableTraceLog {
+		log.Printf("[TRACE] "+format, v...)
+	}
+}
+
+// Traceln - print trace log to stdout
+func Traceln(v ...interface{}) {
+	if variable.EnableTraceLog {
+		log.Println(append([]interface{}{"[TRACE]"}, v)...)
+	}
+}
+
+// If - cond ? a : b
+func If(cond bool, a interface{}, b interface{}) interface{} {
+	if cond {
+		return a
+	}
+	return b
 }
