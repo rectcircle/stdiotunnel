@@ -12,6 +12,8 @@ import (
 
 // Bridge - Bridge, manage all tunnels
 type Bridge struct {
+	reader      io.ReadCloser
+	writer      io.WriteCloser
 	ReadChannel <-chan Segment
 	ReadClosed  <-chan error
 	WriteChanel chan<- Segment
@@ -25,6 +27,8 @@ func NewBridge(reader io.ReadCloser, writer io.WriteCloser, IsClient bool) (brid
 	readChannel, readClosed := DeserializeFromReader(reader)
 	writeChanel, writeClosed := SerializeToWriter(writer)
 	bridge = &Bridge{
+		reader:      reader,
+		writer:      writer,
 		ReadChannel: readChannel,
 		ReadClosed:  readClosed,
 		WriteChanel: writeChanel,
@@ -122,11 +126,11 @@ func (bridge *Bridge) Serve(host string, port uint16, createNetConn CreateNetCon
 				continue
 			}
 			// start forward
-			go tunnel.Forward(bridge.WriteChanel, bridge.IsClient)
+			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge.WriteClosed, bridge.WriteChanel, bridge.IsClient)
 			// response `MethodAckConn`
 			bridge.WriteChanel <- NewAckSegment(VID)
 		case MethodAckConn: // client handle `MethodAckConn`
-			go tunnel.Forward(bridge.WriteChanel, bridge.IsClient)
+			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge.WriteClosed, bridge.WriteChanel, bridge.IsClient)
 		case MethodSendData: // client or server handle `MethodSendData`
 			if tunnel.Conn != nil {
 				_, err := tunnel.Conn.Write(segment.Payload)
@@ -144,13 +148,28 @@ func (bridge *Bridge) Serve(host string, port uint16, createNetConn CreateNetCon
 			// Nothing
 		}
 	}
+	// receive reader Closed
+	err := <-bridge.ReadClosed
+	tools.TraceF("%s Serve receive ReadClosed: err = %v\n",
+		tools.If(bridge.IsClient, "Client", "Server"),
+		err)
+	// close all virtual connection
+	bridge.CloseTunnels()
+	// close writer if writer is not closed
+	select {
+	case <-bridge.WriteClosed:
+	default:
+		bridge.writer.Close()
+	}
 }
 
-// Close - close all virtual connection
-func (bridge *Bridge) Close() {
+// CloseTunnels - close all virtual connection
+func (bridge *Bridge) CloseTunnels() {
 	for _, tunnel := range bridge.Tunnels {
 		if tunnel.VID != 0 {
-
+			if tunnel.Conn != nil {
+				tunnel.Close(bridge.IsClient, errors.New("line break"))
+			}
 		}
 	}
 }
@@ -163,9 +182,10 @@ type Tunnel struct {
 }
 
 // Forward - Client/Server Read from conn and send to writeChanel
-func (tunnel *Tunnel) Forward(WriteChanel chan<- Segment, IsClient bool) {
+func (tunnel *Tunnel) Forward(reader io.ReadCloser, ReadCloser <-chan error, WriteClosed <-chan error, WriteChanel chan<- Segment, IsClient bool) {
 	buffer := make([]byte, 4096)
 	for tunnel.Conn != nil {
+		// Read
 		n, err := tunnel.Conn.Read(buffer)
 		if err != nil {
 			tools.TraceF("%s Forward has exit: VID = %d err = %v\n",
@@ -176,12 +196,27 @@ func (tunnel *Tunnel) Forward(WriteChanel chan<- Segment, IsClient bool) {
 			}
 			break
 		}
-		WriteChanel <- NewSendDataSegment(tunnel.VID, buffer[:n])
-		// select {
-		// case
-		// case
-
-		// }
+		// Write
+		select {
+		// receive writer Closed
+		case err := <-WriteClosed:
+			tools.TraceF("%s Forward receive WriteClosed: err = %v\n",
+				tools.If(IsClient, "Client", "Server"),
+				err)
+			// close this virtual connection
+			tunnel.Close(IsClient, err)
+			select {
+			case <-ReadCloser:
+				// Reader has closed
+			default:
+				// if Reader not close, bridge.Serve will go out loop
+				// to close other virtual connection
+				reader.Close()
+			}
+			break
+		default:
+			WriteChanel <- NewSendDataSegment(tunnel.VID, buffer[:n])
+		}
 	}
 }
 
