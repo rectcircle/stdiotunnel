@@ -101,7 +101,7 @@ func (s *Segment) Equal(other *Segment) bool {
 		bytes.Equal(s.Payload, other.Payload)
 }
 
-// Copy - deep copy the object
+// Copy - deep copy the object, use none pointer receiver implement basic copy
 func (s Segment) Copy() Segment {
 	payload := make([]byte, s.PayloadLength)
 	copy(payload, s.Payload)
@@ -110,7 +110,7 @@ func (s Segment) Copy() Segment {
 }
 
 // Serialize - Serialize Segment to []byte
-func (s Segment) Serialize() []byte {
+func (s *Segment) Serialize() []byte {
 	data := make([]byte, 8+s.PayloadLength)
 	data[0] = s.Version
 	data[1] = s.Method
@@ -124,7 +124,7 @@ func (s Segment) Serialize() []byte {
 // if write() error, `closed` will receive a error and close the `closed` channel
 func SerializeToWriter(writer io.Writer) (chan<- Segment, <-chan error) {
 	segmentChannel := make(chan Segment)
-	closed := make(chan error)
+	closed := make(chan error, 1)
 
 	go func() {
 		for {
@@ -146,7 +146,7 @@ func SerializeToWriter(writer io.Writer) (chan<- Segment, <-chan error) {
 // if read() error, `closed` will receive a error and close the `closed` channel
 func DeserializeFromReader(reader io.Reader) (<-chan Segment, <-chan error) {
 	segmentChannel := make(chan Segment)
-	closed := make(chan error)
+	closed := make(chan error, 1)
 	go func() {
 		buffer := make([]byte, 4096)
 		var cache Segment
