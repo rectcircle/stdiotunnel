@@ -213,7 +213,7 @@ func bridgeServeSmoke(t *testing.T) {
 	log.Printf("Close a Virtual Connection VID = %d, err = %s", VID, err)
 }
 
-func bridgeServeBoundaryExhausted(t *testing.T) {
+func bridgeServeBoundaryConnetionExhausted(t *testing.T) {
 	MaxVirtualConnection := variable.MaxVirtualConnection
 	variable.MaxVirtualConnection = 1
 	pipeForClient, pipeForServer := NewSimulatedConn()
@@ -300,7 +300,7 @@ func TestBridge_Serve(t *testing.T) {
 	EnableTraceLog := variable.EnableTraceLog
 	variable.EnableTraceLog = true
 	t.Run("smoke", bridgeServeSmoke)
-	t.Run("boundary exhausted", bridgeServeBoundaryExhausted)
+	t.Run("boundary connetion exhausted", bridgeServeBoundaryConnetionExhausted)
 	t.Run("boundary server start connection error", bridgeServeBoundaryServerStartConnError)
 	t.Run("boundary server close", bridgeServeBoundaryServerClose)
 	t.Run("boundary line break", bridgeLineBreak)
