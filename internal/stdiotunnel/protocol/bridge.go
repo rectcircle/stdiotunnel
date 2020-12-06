@@ -162,6 +162,9 @@ func (tunnel *Tunnel) Forward(IsClient bool) {
 	for tunnel.Conn != nil {
 		n, err := tunnel.Conn.Read(buffer)
 		if err != nil {
+			tools.TraceF("%s Forward has exit: VID = %d err = %v\n",
+				tools.If(IsClient, "Client", "Server"),
+				tunnel.VID, err)
 			if tunnel.Conn != nil {
 				tunnel.StartClose(IsClient, err)
 			}
@@ -210,7 +213,8 @@ func (tunnel *Tunnel) Close(IsClient bool, err error) {
 		tunnel.VID = 0
 	}
 	if tunnel.Conn != nil {
-		tunnel.Conn.Close()
+		Conn := tunnel.Conn
 		tunnel.Conn = nil
+		Conn.Close()
 	}
 }

@@ -14,17 +14,17 @@ import (
 
 // simulation a echo service
 // 1. As a echo service
-//  W --->  -------------
-//         | EchoService |
-//  R <---  -------------
+//    W --->  -------------
+//           | EchoService |
+//    R <---  -------------
 //
 // 2. simulation Pipeline or connection
-//          -------------
-// W --->  | EchoService | ---> R
-//          -------------
-//          -------------
-// R <---  | EchoService | <--- W
-//          -------------
+//            -------------
+//   W --->  | EchoService | ---> R
+//            -------------
+//            -------------
+//   R <---  | EchoService | <--- W
+//            -------------
 type EchoService struct {
 	closed chan bool
 	buffer chan []byte
@@ -73,6 +73,7 @@ func (s *EchoService) Write(p []byte) (n int, err error) {
 }
 
 func (s *EchoService) Close() error {
+	log.Printf("Echo server has closed")
 	select {
 	case <-s.closed:
 		return errors.New("Closed")
@@ -131,11 +132,11 @@ func (s *SimulatedConn) Close() error {
 	return nil
 }
 
-func checkEchoService(es io.ReadWriteCloser, t *testing.T) {
+func checkEchoServiceNoClose(es io.ReadWriteCloser, t *testing.T) {
 	want := []byte("test")
 	n, err := es.Write(want)
 	if err != nil {
-		t.Errorf("EchoService.Write want err = nil, got err = %s", err)
+		t.Errorf("EchoService.Write want err = nil, got err = %v", err)
 	}
 	if n != len(want) {
 		t.Errorf("EchoService.Write want n = %d, got n = %d", len(want), n)
@@ -143,7 +144,7 @@ func checkEchoService(es io.ReadWriteCloser, t *testing.T) {
 	got := make([]byte, 4096)
 	n, err = es.Read(got)
 	if err != nil {
-		t.Errorf("EchoService.Read want err = nil, got err = %s", err)
+		t.Errorf("EchoService.Read want err = nil, got err = %v", err)
 	}
 	if n != len(want) {
 		t.Errorf("EchoService.Read want n = %d, got n = %d", len(want), n)
@@ -159,8 +160,13 @@ func checkEchoService(es io.ReadWriteCloser, t *testing.T) {
 			t.Errorf("EchoService.Read want[i] = %s, got[i] = %s", string(want[i:i+1]), string(got))
 		}
 	}
+}
+
+func checkEchoService(es io.ReadWriteCloser, t *testing.T) {
+	want := []byte("test")
+	checkEchoServiceNoClose(es, t)
 	es.Close()
-	n, err = es.Write(want)
+	_, err := es.Write(want)
 	if err == nil {
 		t.Errorf("EchoService.Write should return err")
 	}
@@ -210,7 +216,7 @@ func bridgeServeSmoke(t *testing.T) {
 	log.Printf("Create a new Virtual Connection VID = %d", VID)
 	checkEchoService(clientConnForClient, t)
 	err := <-Closed
-	log.Printf("Close a Virtual Connection VID = %d, err = %s", VID, err)
+	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
 }
 
 func bridgeServeBoundaryConnetionExhausted(t *testing.T) {
@@ -236,18 +242,18 @@ func bridgeServeBoundaryConnetionExhausted(t *testing.T) {
 	VID2, Closed2 := client.ClientNewTunnel(clientConnForServer2)
 	log.Printf("Create a new Virtual Connection VID = %d", VID2)
 	err2 := <-Closed2
-	log.Printf("Close a Virtual Connection VID = %d, err = %s", VID2, err2)
+	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID2, err2)
 	// test and close conn 1
 	checkEchoService(clientConnForClient, t)
 	err := <-Closed
-	log.Printf("Close a Virtual Connection VID = %d, err = %s", VID, err)
+	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
 	// create client Conn 3
 	clientConnForClient3, clientConnForServer3 := NewSimulatedConn()
 	VID3, Closed3 := client.ClientNewTunnel(clientConnForServer3)
 	log.Printf("Create a new Virtual Connection VID = %d", VID3)
 	checkEchoService(clientConnForClient3, t)
 	err3 := <-Closed3
-	log.Printf("Close a Virtual Connection VID = %d, err = %s", VID3, err3)
+	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID3, err3)
 	variable.MaxVirtualConnection = MaxVirtualConnection
 }
 
@@ -268,13 +274,13 @@ func bridgeServeBoundaryServerStartConnError(t *testing.T) {
 		client.ClientServe()
 	}()
 	// create client Conn
-	clientConnForClient, clientConnForServer := NewSimulatedConn()
 	for i := 0; i < 10; i++ {
+		clientConnForClient, clientConnForServer := NewSimulatedConn()
 		VID, Closed := client.ClientNewTunnel(clientConnForServer)
 		log.Printf("Create a new Virtual Connection VID = %d", VID)
 		// checkEchoService(clientConnForClient, t)
 		err := <-Closed
-		log.Printf("Close a Virtual Connection VID = %d, err = %s", VID, err)
+		log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
 		n, err := clientConnForClient.Write([]byte("test"))
 		if n != 0 || err == nil {
 			t.Errorf("EchoService.Write should return 0, Closed, but return %d, %s", n, err)
@@ -288,7 +294,44 @@ func bridgeServeBoundaryServerStartConnError(t *testing.T) {
 }
 
 func bridgeServeBoundaryServerClose(t *testing.T) {
-
+	MaxVirtualConnection := variable.MaxVirtualConnection
+	variable.MaxVirtualConnection = 3
+	pipeForClient, pipeForServer := NewSimulatedConn()
+	client := NewBridge(pipeForClient, pipeForClient, true)
+	server := NewBridge(pipeForServer, pipeForServer, false)
+	var serverConn io.ReadWriteCloser = nil
+	createNetConn := func(host string, port uint16) (io.ReadWriteCloser, error) {
+		if serverConn != nil {
+			serverConn.Close()
+		}
+		rw, err := simulateCreateNetConn(host, port)
+		serverConn = rw
+		return rw, err
+	}
+	// start a Serve
+	go func() {
+		server.Serve("localhost", 10007, createNetConn)
+	}()
+	// start a client
+	go func() {
+		client.ClientServe()
+	}()
+	var (
+		Closed <-chan error
+	)
+	for i := 0; i < 10; i++ {
+		// create client Conn
+		clientConnForClient, clientConnForServer := NewSimulatedConn()
+		VID, ClosedTmp := client.ClientNewTunnel(clientConnForServer)
+		if Closed != nil {
+			err := <-Closed
+			log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
+		}
+		Closed = ClosedTmp
+		log.Printf("Create a new Virtual Connection VID = %d", VID)
+		checkEchoServiceNoClose(clientConnForClient, t)
+	}
+	variable.MaxVirtualConnection = MaxVirtualConnection
 }
 
 func bridgeLineBreak(t *testing.T) {
@@ -303,6 +346,6 @@ func TestBridge_Serve(t *testing.T) {
 	t.Run("boundary connetion exhausted", bridgeServeBoundaryConnetionExhausted)
 	t.Run("boundary server start connection error", bridgeServeBoundaryServerStartConnError)
 	t.Run("boundary server close", bridgeServeBoundaryServerClose)
-	t.Run("boundary line break", bridgeLineBreak)
+	// t.Run("boundary line break", bridgeLineBreak)
 	variable.EnableTraceLog = EnableTraceLog
 }
