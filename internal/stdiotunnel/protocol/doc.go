@@ -26,5 +26,16 @@ Architecture diagram:
                  |    ...       |                                       |                |
                  |              |                                       +----------------+
                  +--------------+
+
+Virtual Connection Close process:
+    case 1: client first close
+             client                               server
+        (from: SendData, Forward)
+                       ---- CloseSegment ---> tunnel.close()
+        tunnel.close() <--- CloseSegment ----
+
+    case 2: server first close
+             client                               server
+        tunnel.close() <--- CloseSegment ---- tunnel.close()  (from: ReqConn, SendData, Forward)
 */
 package protocol

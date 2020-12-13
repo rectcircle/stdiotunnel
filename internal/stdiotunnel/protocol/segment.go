@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"sync"
 )
 
 const (
@@ -122,24 +123,26 @@ func (s *Segment) Serialize() []byte {
 
 // SerializeToWriter - start a goroutine to receive Segment from channel and write to `writer`
 // if write() error, `closed` will receive a error and close the `closed` channel
-func SerializeToWriter(writer io.Writer) (chan<- Segment, <-chan error) {
+func SerializeToWriter(writer io.Writer) (chan<- Segment, <-chan error, *sync.Mutex) {
 	segmentChannel := make(chan Segment)
 	closed := make(chan error, 1)
-
+	writeMutex := &sync.Mutex{}
 	go func() {
 		for {
 			s := <-segmentChannel
 			_, err := writer.Write(s.Serialize())
 			if err != nil {
+				writeMutex.Lock()
 				closed <- err
 				close(closed)
 				close(segmentChannel)
+				writeMutex.Unlock()
 				break
 			}
 		}
 	}()
 
-	return segmentChannel, closed
+	return segmentChannel, closed, writeMutex
 }
 
 // DeserializeFromReader - start a goroutine to read and Deserialize `reader` and send to `segment`

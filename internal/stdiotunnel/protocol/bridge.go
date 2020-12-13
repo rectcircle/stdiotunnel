@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/rectcircle/stdiotunnel/internal/variable"
 	"github.com/rectcircle/stdiotunnel/tools"
@@ -12,31 +13,55 @@ import (
 
 // Bridge - Bridge, manage all tunnels
 type Bridge struct {
-	reader      io.ReadCloser
-	writer      io.WriteCloser
-	ReadChannel <-chan Segment
-	ReadClosed  <-chan error
-	WriteChanel chan<- Segment
-	WriteClosed <-chan error
-	IsClient    bool
-	Tunnels     []Tunnel
+	reader           io.ReadCloser
+	writer           io.WriteCloser
+	ReadChannel      <-chan Segment
+	ReadClosed       <-chan error
+	WriteChannel     chan<- Segment
+	WriteClosed      <-chan error
+	WriteClosedError error
+	WriteMutex       *sync.Mutex
+	IsClient         bool
+	Tunnels          []Tunnel
+}
+
+// WritableSegmentChannel - writable segment channel
+type WritableSegmentChannel interface {
+	Write(segment Segment) error
 }
 
 // NewBridge - Create a Bridge to serve
 func NewBridge(reader io.ReadCloser, writer io.WriteCloser, IsClient bool) (bridge *Bridge) {
 	readChannel, readClosed := DeserializeFromReader(reader)
-	writeChanel, writeClosed := SerializeToWriter(writer)
+	WriteChannel, writeClosed, writeMutex := SerializeToWriter(writer)
 	bridge = &Bridge{
-		reader:      reader,
-		writer:      writer,
-		ReadChannel: readChannel,
-		ReadClosed:  readClosed,
-		WriteChanel: writeChanel,
-		WriteClosed: writeClosed,
-		IsClient:    IsClient,
-		Tunnels:     make([]Tunnel, 1, variable.MaxVirtualConnection+1), // connectID = 0 not use
+		reader:           reader,
+		writer:           writer,
+		ReadChannel:      readChannel,
+		ReadClosed:       readClosed,
+		WriteChannel:     WriteChannel,
+		WriteClosed:      writeClosed,
+		WriteClosedError: nil,
+
+		WriteMutex: writeMutex,
+		IsClient:   IsClient,
+		Tunnels:    make([]Tunnel, 1, variable.MaxVirtualConnection+1), // connectID = 0 not use
 	}
 	return
+}
+
+func (bridge *Bridge) Write(segment Segment) error {
+	bridge.WriteMutex.Lock()
+	defer bridge.WriteMutex.Unlock()
+	select {
+	case err := <-bridge.WriteClosed:
+		if err != nil {
+			bridge.WriteClosedError = err
+		}
+	default:
+		bridge.WriteChannel <- segment
+	}
+	return bridge.WriteClosedError
 }
 
 // ClientNewTunnel - new a Tunnel from client
@@ -44,9 +69,10 @@ func (bridge *Bridge) ClientNewTunnel(conn io.ReadWriteCloser) (VID uint16, Clos
 	VID = uint16(len(bridge.Tunnels))
 	c := make(chan error, 1)
 	tunnel := Tunnel{
-		conn,
-		VID,
-		c,
+		Conn:   conn,
+		VID:    VID,
+		Closed: c,
+		mutex:  &sync.Mutex{},
 	}
 	Closed = c
 	// register this virtual connetion
@@ -64,7 +90,7 @@ func (bridge *Bridge) ClientNewTunnel(conn io.ReadWriteCloser) (VID uint16, Clos
 	}
 	// send new connection request
 	if VID <= variable.MaxVirtualConnection {
-		bridge.WriteChanel <- NewRequestSegment(tunnel.VID)
+		bridge.Write(NewRequestSegment(tunnel.VID))
 		return
 	}
 	// error
@@ -110,9 +136,10 @@ func (bridge *Bridge) Serve(host string, port uint16, createNetConn CreateNetCon
 			conn, err := createNetConn(host, port)
 			// register a tunnel
 			t := Tunnel{
-				conn,
-				VID,
-				make(chan error, 1),
+				Conn:   conn,
+				VID:    VID,
+				Closed: make(chan error, 1),
+				mutex:  &sync.Mutex{},
 			}
 			if tunnel == nil {
 				bridge.Tunnels = append(bridge.Tunnels, t)
@@ -122,28 +149,23 @@ func (bridge *Bridge) Serve(host string, port uint16, createNetConn CreateNetCon
 			tunnel = &bridge.Tunnels[VID]
 			// response `MethodCloseConn`
 			if err != nil /*&& !bridge.IsClient*/ { // must is Server
-				tunnel.StartClose(bridge.WriteChanel, bridge.IsClient, err)
+				tunnel.StartClose(bridge, bridge.IsClient, err)
 				continue
 			}
 			// start forward
-			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge.WriteClosed, bridge.WriteChanel, bridge.IsClient)
+			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge, bridge.IsClient)
 			// response `MethodAckConn`
-			bridge.WriteChanel <- NewAckSegment(VID)
+			bridge.Write(NewAckSegment(VID))
 		case MethodAckConn: // client handle `MethodAckConn`
-			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge.WriteClosed, bridge.WriteChanel, bridge.IsClient)
+			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge, bridge.IsClient)
 		case MethodSendData: // client or server handle `MethodSendData`
-			if tunnel.Conn != nil {
-				_, err := tunnel.Conn.Write(segment.Payload)
-				if err != nil {
-					tunnel.StartClose(bridge.WriteChanel, bridge.IsClient, err)
-				}
-			}
+			tunnel.WriteToConn(segment.Payload, bridge, bridge.IsClient)
 		case MethodCloseConn: // client or server handle `MethodCloseConn`
 			var err error = nil
 			if segment.PayloadLength != 0 {
 				err = errors.New(string(segment.Payload))
 			}
-			tunnel.HandleCloseConnSegment(bridge.WriteChanel, bridge.IsClient, err)
+			tunnel.HandleCloseConnSegment(bridge, bridge.IsClient, err)
 		case MethodHeartbeat:
 			// Nothing
 		}
@@ -179,10 +201,11 @@ type Tunnel struct {
 	Conn   io.ReadWriteCloser
 	VID    uint16
 	Closed chan<- error
+	mutex  *sync.Mutex
 }
 
-// Forward - Client/Server Read from conn and send to writeChanel
-func (tunnel *Tunnel) Forward(reader io.ReadCloser, ReadCloser <-chan error, WriteClosed <-chan error, WriteChanel chan<- Segment, IsClient bool) {
+// Forward - Client/Server Read from conn and send to WriteChannel
+func (tunnel *Tunnel) Forward(reader io.ReadCloser, ReadCloser <-chan error, Writable WritableSegmentChannel, IsClient bool) {
 	buffer := make([]byte, 4096)
 	for tunnel.Conn != nil {
 		// Read
@@ -191,47 +214,47 @@ func (tunnel *Tunnel) Forward(reader io.ReadCloser, ReadCloser <-chan error, Wri
 			tools.TraceF("%s Forward has exit: VID = %d err = %v\n",
 				tools.If(IsClient, "Client", "Server"),
 				tunnel.VID, err)
+			tunnel.mutex.Lock()
 			if tunnel.Conn != nil {
-				tunnel.StartClose(WriteChanel, IsClient, err)
+				tunnel.mutex.Unlock()
+				tunnel.StartClose(Writable, IsClient, err)
+			} else {
+				tunnel.mutex.Unlock()
 			}
 			break
 		}
-		// Write
-		select {
-		// receive writer Closed
-		case err := <-WriteClosed:
-			tools.TraceF("%s Forward receive WriteClosed: err = %v\n",
-				tools.If(IsClient, "Client", "Server"),
-				err)
-			// close this virtual connection
-			tunnel.Close(IsClient, err)
-			select {
-			case <-ReadCloser:
-				// Reader has closed
-			default:
-				// if Reader not close, bridge.Serve will go out loop
-				// to close other virtual connection
-				reader.Close()
-			}
-			break
-		default:
-			WriteChanel <- NewSendDataSegment(tunnel.VID, buffer[:n])
-		}
+		Writable.Write(NewSendDataSegment(tunnel.VID, buffer[:n]))
 	}
 }
 
+// WriteToConn - write segment.Payload to conn
+func (tunnel *Tunnel) WriteToConn(buffer []byte, Writable WritableSegmentChannel, IsClient bool) (n int, err error) {
+	tunnel.mutex.Lock()
+	if tunnel.Conn != nil {
+		n, err = tunnel.Conn.Write(buffer)
+		tunnel.mutex.Unlock()
+		if err != nil {
+			tunnel.StartClose(Writable, IsClient, err)
+		}
+	} else {
+		tunnel.mutex.Unlock()
+		err = errors.New("conn has closed")
+	}
+	return
+}
+
 // StartClose - Start close a virtual connection
-func (tunnel *Tunnel) StartClose(WriteChanel chan<- Segment, IsClient bool, err error) {
+func (tunnel *Tunnel) StartClose(Writable WritableSegmentChannel, IsClient bool, err error) {
 	VID := tunnel.VID
 	if !IsClient {
 		// Server
 		tunnel.Close(IsClient, err)
 	}
-	tunnel.NoticeRemoteClose(WriteChanel, VID, err)
+	tunnel.NoticeRemoteClose(Writable, VID, err)
 }
 
 // HandleCloseConnSegment - handle MethodCloseConn segment
-func (tunnel *Tunnel) HandleCloseConnSegment(WriteChanel chan<- Segment, IsClient bool, err error) {
+func (tunnel *Tunnel) HandleCloseConnSegment(Writable WritableSegmentChannel, IsClient bool, err error) {
 	VID := tunnel.VID
 	if IsClient {
 		// Client
@@ -239,13 +262,13 @@ func (tunnel *Tunnel) HandleCloseConnSegment(WriteChanel chan<- Segment, IsClien
 	} else {
 		// Server
 		tunnel.Close(IsClient, err)
-		tunnel.NoticeRemoteClose(WriteChanel, VID, err)
+		tunnel.NoticeRemoteClose(Writable, VID, err)
 	}
 }
 
 // NoticeRemoteClose - Notice remote to close
-func (tunnel *Tunnel) NoticeRemoteClose(WriteChanel chan<- Segment, VID uint16, err error) {
-	WriteChanel <- NewCloseSegment(VID, err)
+func (tunnel *Tunnel) NoticeRemoteClose(Writable WritableSegmentChannel, VID uint16, err error) {
+	Writable.Write(NewCloseSegment(VID, err))
 }
 
 // Close - close and reset tunnel
@@ -253,10 +276,12 @@ func (tunnel *Tunnel) Close(IsClient bool, err error) {
 	tools.TraceF("%s half has closed: VID = %d\n",
 		tools.If(IsClient, "Client", "Server"),
 		tunnel.VID)
+	tunnel.mutex.Lock()
+	defer tunnel.mutex.Unlock()
 	if tunnel.VID != 0 {
+		tunnel.VID = 0
 		tunnel.Closed <- err
 		close(tunnel.Closed)
-		tunnel.VID = 0
 	}
 	if tunnel.Conn != nil {
 		Conn := tunnel.Conn

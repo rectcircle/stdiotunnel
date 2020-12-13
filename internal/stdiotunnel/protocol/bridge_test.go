@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/rectcircle/stdiotunnel/internal/variable"
 	"github.com/rectcircle/stdiotunnel/tools"
@@ -121,7 +122,9 @@ func (s *SimulatedConn) Write(p []byte) (n int, err error) {
 }
 
 func (s *SimulatedConn) Close() error {
+	log.Printf("<-RW- will close")
 	err1 := s.RW.Close()
+	log.Printf("-WR-> will close")
 	err2 := s.WR.Close()
 	if err1 != nil {
 		return err1
@@ -335,7 +338,52 @@ func bridgeServeBoundaryServerClose(t *testing.T) {
 }
 
 func bridgeLineBreak(t *testing.T) {
+	pipeForClient, pipeForServer := NewSimulatedConn()
+	client := NewBridge(pipeForClient, pipeForClient, true)
+	server := NewBridge(pipeForServer, pipeForServer, false)
+	// start a Serve
+	go func() {
+		server.Serve("localhost", 10007, simulateCreateNetConn)
+	}()
+	// start a client
+	go func() {
+		client.ClientServe()
+	}()
+	// create client Conn
+	_, clientConnForServer := NewSimulatedConn()
+	VID, Closed := client.ClientNewTunnel(clientConnForServer)
+	log.Printf("Create a new Virtual Connection VID = %d", VID)
+	pipeForClient.Close()
+	err := <-Closed
+	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
+	time.Sleep(10 * time.Millisecond)
+}
 
+func bridgeLineBreak2(t *testing.T) {
+	pipeForClient, pipeForServer := NewSimulatedConn()
+	client := NewBridge(pipeForClient, pipeForClient, true)
+	server := NewBridge(pipeForServer, pipeForServer, false)
+	// start a Serve
+	go func() {
+		server.Serve("localhost", 10007, simulateCreateNetConn)
+	}()
+	// start a client
+	go func() {
+		client.ClientServe()
+	}()
+	// create client Conn
+	clientConnForClient, clientConnForServer := NewSimulatedConn()
+	VID, Closed := client.ClientNewTunnel(clientConnForServer)
+	log.Printf("Create a new Virtual Connection VID = %d", VID)
+	clientConnForClient.Write([]byte("test"))
+	buffer := make([]byte, 4096)
+	n, err := clientConnForClient.Read(buffer)
+	log.Printf("buffer := %s, err = %v", buffer[:n], err)
+	pipeForServer.Close()
+	clientConnForClient.Write([]byte("test"))
+	err = <-Closed
+	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
+	time.Sleep(10 * time.Millisecond)
 }
 
 func TestBridge_Serve(t *testing.T) {
@@ -347,5 +395,6 @@ func TestBridge_Serve(t *testing.T) {
 	t.Run("boundary server start connection error", bridgeServeBoundaryServerStartConnError)
 	t.Run("boundary server close", bridgeServeBoundaryServerClose)
 	// t.Run("boundary line break", bridgeLineBreak)
+	// t.Run("boundary line break2", bridgeLineBreak2)
 	variable.EnableTraceLog = EnableTraceLog
 }
