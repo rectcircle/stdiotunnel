@@ -13,8 +13,6 @@ import (
 
 // Bridge - Bridge, manage all tunnels
 type Bridge struct {
-	reader           io.ReadCloser
-	writer           io.WriteCloser
 	ReadChannel      <-chan Segment
 	ReadClosed       <-chan error
 	WriteChannel     chan<- Segment
@@ -31,12 +29,10 @@ type WritableSegmentChannel interface {
 }
 
 // NewBridge - Create a Bridge to serve
-func NewBridge(reader io.ReadCloser, writer io.WriteCloser, IsClient bool) (bridge *Bridge) {
-	readChannel, readClosed := DeserializeFromReader(reader)
-	WriteChannel, writeClosed, writeMutex := SerializeToWriter(writer)
+func NewBridge(conn io.ReadWriteCloser, IsClient bool) (bridge *Bridge) {
+	readChannel, readClosed := DeserializeFromReader(conn)
+	WriteChannel, writeClosed, writeMutex := SerializeToWriter(conn)
 	bridge = &Bridge{
-		reader:           reader,
-		writer:           writer,
 		ReadChannel:      readChannel,
 		ReadClosed:       readClosed,
 		WriteChannel:     WriteChannel,
@@ -153,11 +149,11 @@ func (bridge *Bridge) Serve(host string, port uint16, createNetConn CreateNetCon
 				continue
 			}
 			// start forward
-			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge, bridge.IsClient)
+			go tunnel.Forward(bridge, bridge.IsClient)
 			// response `MethodAckConn`
 			bridge.Write(NewAckSegment(VID))
 		case MethodAckConn: // client handle `MethodAckConn`
-			go tunnel.Forward(bridge.reader, bridge.ReadClosed, bridge, bridge.IsClient)
+			go tunnel.Forward(bridge, bridge.IsClient)
 		case MethodSendData: // client or server handle `MethodSendData`
 			tunnel.WriteToConn(segment.Payload, bridge, bridge.IsClient)
 		case MethodCloseConn: // client or server handle `MethodCloseConn`
@@ -177,21 +173,14 @@ func (bridge *Bridge) Serve(host string, port uint16, createNetConn CreateNetCon
 		err)
 	// close all virtual connection
 	bridge.CloseTunnels()
-	// close writer if writer is not closed
-	select {
-	case <-bridge.WriteClosed:
-	default:
-		bridge.writer.Close()
-	}
 }
 
 // CloseTunnels - close all virtual connection
 func (bridge *Bridge) CloseTunnels() {
-	for _, tunnel := range bridge.Tunnels {
+	for i := range bridge.Tunnels {
+		tunnel := &bridge.Tunnels[i]
 		if tunnel.VID != 0 {
-			if tunnel.Conn != nil {
-				tunnel.Close(bridge.IsClient, errors.New("line break"))
-			}
+			tunnel.Close(bridge.IsClient, errors.New("line break"))
 		}
 	}
 }
@@ -205,7 +194,7 @@ type Tunnel struct {
 }
 
 // Forward - Client/Server Read from conn and send to WriteChannel
-func (tunnel *Tunnel) Forward(reader io.ReadCloser, ReadCloser <-chan error, Writable WritableSegmentChannel, IsClient bool) {
+func (tunnel *Tunnel) Forward(Writable WritableSegmentChannel, IsClient bool) {
 	buffer := make([]byte, 4096)
 	for tunnel.Conn != nil {
 		// Read
@@ -273,11 +262,11 @@ func (tunnel *Tunnel) NoticeRemoteClose(Writable WritableSegmentChannel, VID uin
 
 // Close - close and reset tunnel
 func (tunnel *Tunnel) Close(IsClient bool, err error) {
+	tunnel.mutex.Lock()
+	defer tunnel.mutex.Unlock()
 	tools.TraceF("%s half has closed: VID = %d\n",
 		tools.If(IsClient, "Client", "Server"),
 		tunnel.VID)
-	tunnel.mutex.Lock()
-	defer tunnel.mutex.Unlock()
 	if tunnel.VID != 0 {
 		tunnel.VID = 0
 		tunnel.Closed <- err

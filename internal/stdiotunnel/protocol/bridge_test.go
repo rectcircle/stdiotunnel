@@ -203,8 +203,8 @@ func exp() {
 
 func bridgeServeSmoke(t *testing.T) {
 	pipeForClient, pipeForServer := NewSimulatedConn()
-	client := NewBridge(pipeForClient, pipeForClient, true)
-	server := NewBridge(pipeForServer, pipeForServer, false)
+	client := NewBridge(pipeForClient, true)
+	server := NewBridge(pipeForServer, false)
 	// start a Serve
 	go func() {
 		server.Serve("localhost", 10007, simulateCreateNetConn)
@@ -226,8 +226,8 @@ func bridgeServeBoundaryConnetionExhausted(t *testing.T) {
 	MaxVirtualConnection := variable.MaxVirtualConnection
 	variable.MaxVirtualConnection = 1
 	pipeForClient, pipeForServer := NewSimulatedConn()
-	client := NewBridge(pipeForClient, pipeForClient, true)
-	server := NewBridge(pipeForServer, pipeForServer, false)
+	client := NewBridge(pipeForClient, true)
+	server := NewBridge(pipeForServer, false)
 	// start a Serve
 	go func() {
 		server.Serve("localhost", 10007, simulateCreateNetConn)
@@ -264,8 +264,8 @@ func bridgeServeBoundaryServerStartConnError(t *testing.T) {
 	MaxVirtualConnection := variable.MaxVirtualConnection
 	variable.MaxVirtualConnection = 3
 	pipeForClient, pipeForServer := NewSimulatedConn()
-	client := NewBridge(pipeForClient, pipeForClient, true)
-	server := NewBridge(pipeForServer, pipeForServer, false)
+	client := NewBridge(pipeForClient, true)
+	server := NewBridge(pipeForServer, false)
 	// start a Serve
 	go func() {
 		server.Serve("localhost", 10007, func(host string, port uint16) (io.ReadWriteCloser, error) {
@@ -300,8 +300,8 @@ func bridgeServeBoundaryServerClose(t *testing.T) {
 	MaxVirtualConnection := variable.MaxVirtualConnection
 	variable.MaxVirtualConnection = 3
 	pipeForClient, pipeForServer := NewSimulatedConn()
-	client := NewBridge(pipeForClient, pipeForClient, true)
-	server := NewBridge(pipeForServer, pipeForServer, false)
+	client := NewBridge(pipeForClient, true)
+	server := NewBridge(pipeForServer, false)
 	var serverConn io.ReadWriteCloser = nil
 	createNetConn := func(host string, port uint16) (io.ReadWriteCloser, error) {
 		if serverConn != nil {
@@ -339,30 +339,8 @@ func bridgeServeBoundaryServerClose(t *testing.T) {
 
 func bridgeLineBreak(t *testing.T) {
 	pipeForClient, pipeForServer := NewSimulatedConn()
-	client := NewBridge(pipeForClient, pipeForClient, true)
-	server := NewBridge(pipeForServer, pipeForServer, false)
-	// start a Serve
-	go func() {
-		server.Serve("localhost", 10007, simulateCreateNetConn)
-	}()
-	// start a client
-	go func() {
-		client.ClientServe()
-	}()
-	// create client Conn
-	_, clientConnForServer := NewSimulatedConn()
-	VID, Closed := client.ClientNewTunnel(clientConnForServer)
-	log.Printf("Create a new Virtual Connection VID = %d", VID)
-	pipeForClient.Close()
-	err := <-Closed
-	log.Printf("Close a Virtual Connection VID = %d, err = %v", VID, err)
-	time.Sleep(10 * time.Millisecond)
-}
-
-func bridgeLineBreak2(t *testing.T) {
-	pipeForClient, pipeForServer := NewSimulatedConn()
-	client := NewBridge(pipeForClient, pipeForClient, true)
-	server := NewBridge(pipeForServer, pipeForServer, false)
+	client := NewBridge(pipeForClient, true)
+	server := NewBridge(pipeForServer, false)
 	// start a Serve
 	go func() {
 		server.Serve("localhost", 10007, simulateCreateNetConn)
@@ -394,7 +372,6 @@ func TestBridge_Serve(t *testing.T) {
 	t.Run("boundary connetion exhausted", bridgeServeBoundaryConnetionExhausted)
 	t.Run("boundary server start connection error", bridgeServeBoundaryServerStartConnError)
 	t.Run("boundary server close", bridgeServeBoundaryServerClose)
-	// t.Run("boundary line break", bridgeLineBreak)
-	// t.Run("boundary line break2", bridgeLineBreak2)
+	t.Run("boundary line break", bridgeLineBreak)
 	variable.EnableTraceLog = EnableTraceLog
 }
